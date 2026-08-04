@@ -1,0 +1,42 @@
+services:
+  simulator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP: simulator
+    environment:
+      SIMULATOR_HOST: 0.0.0.0
+      SIMULATOR_PORT: 4010
+    ports:
+      - "4010:4010"
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP: api
+    depends_on:
+      - simulator
+    environment:
+      API_HOST: 0.0.0.0
+      API_PORT: 4020
+      SIMULATOR_HTTP_URL: http://simulator:4010
+      SIMULATOR_WS_URL: ws://simulator:4010/telemetry
+    ports:
+      - "4020:4020"
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP: web
+    depends_on:
+      - api
+    environment:
+      WEB_HOST: 0.0.0.0
+      WEB_PORT: 4030
+    ports:
+      - "4030:4030"

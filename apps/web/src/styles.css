@@ -1,0 +1,406 @@
+:root {
+  color: #1f2933;
+  background: #f5f7f4;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+button {
+  min-height: 42px;
+  border: 1px solid #c8d2c6;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1f2933;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+button:hover:not(:disabled) {
+  border-color: #117054;
+  box-shadow: 0 2px 10px rgba(17, 112, 84, 0.12);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.46;
+}
+
+.app-shell {
+  width: min(1220px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 24px 0 32px;
+}
+
+.top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.eyebrow {
+  margin: 0 0 4px;
+  color: #60705d;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+h1,
+h2,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  margin-bottom: 0;
+  font-size: 2.25rem;
+  line-height: 1.05;
+}
+
+h2 {
+  margin-bottom: 0;
+  font-size: 1rem;
+}
+
+.status-badge {
+  min-width: 190px;
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #d1d9d0;
+  background: #ffffff;
+}
+
+.status-badge strong,
+.status-badge span {
+  display: block;
+}
+
+.status-badge span {
+  color: #60705d;
+  font-size: 0.88rem;
+}
+
+.status-badge.live {
+  border-color: #117054;
+  color: #0f6b4f;
+}
+
+.status-badge.stale {
+  border-color: #c78119;
+  color: #a06000;
+  background: #fff8e7;
+}
+
+.status-badge.disconnected,
+.status-badge.connecting {
+  border-color: #c94848;
+  color: #b42318;
+  background: #fff1f0;
+}
+
+.status-strip,
+.map-panel,
+.metric-panel,
+.controls-panel,
+.fault-panel,
+.alerts-panel {
+  border: 1px solid #d9e1d7;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.status-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.status-strip div {
+  min-height: 64px;
+  padding: 12px 14px;
+  background: #fbfcfa;
+}
+
+.status-strip span,
+.panel-heading span {
+  color: #657266;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.status-strip strong {
+  display: block;
+  margin-top: 4px;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(320px, 0.8fr);
+  gap: 16px;
+}
+
+.panel-heading {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 0;
+}
+
+.map-panel {
+  min-height: 560px;
+}
+
+.field-map {
+  display: block;
+  width: calc(100% - 32px);
+  aspect-ratio: 1 / 0.72;
+  margin: 16px;
+  border: 1px solid #c7d6c6;
+  border-radius: 8px;
+  background: #eef7ef;
+}
+
+.robot-dot {
+  fill: #117054;
+  stroke: #ffffff;
+  stroke-width: 1.8;
+  transition:
+    cx 180ms linear,
+    cy 180ms linear,
+    fill 160ms ease;
+}
+
+.robot-dot.stale,
+.robot-dot.connecting {
+  fill: #c78119;
+}
+
+.robot-dot.disconnected {
+  fill: #c94848;
+}
+
+.side-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.metric-panel,
+.controls-panel,
+.fault-panel {
+  padding-bottom: 16px;
+}
+
+.metric-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  padding: 16px 16px 0;
+}
+
+.metric-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #465345;
+  font-weight: 700;
+}
+
+.meter {
+  grid-column: 1 / -1;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e8eee6;
+}
+
+.meter span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #117054, #6f9d45);
+}
+
+.coordinate-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 16px 16px 0;
+}
+
+.coordinate-row span {
+  border-radius: 8px;
+  background: #f3f6f2;
+  padding: 12px;
+  font-weight: 800;
+}
+
+.state-pill {
+  border-radius: 999px;
+  padding: 5px 10px;
+  color: #ffffff;
+  background: #59665b;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.state-pill.running {
+  background: #117054;
+}
+
+.state-pill.paused {
+  background: #c78119;
+}
+
+.state-pill.error {
+  background: #b42318;
+}
+
+.control-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 16px 16px 0;
+}
+
+.emergency-button {
+  width: calc(100% - 32px);
+  margin: 12px 16px 0;
+  min-height: 50px;
+  border-color: #b42318;
+  background: #b42318;
+  color: #ffffff;
+}
+
+.emergency-button:hover:not(:disabled) {
+  border-color: #8f1c13;
+  box-shadow: 0 2px 14px rgba(180, 35, 24, 0.24);
+}
+
+.alerts-panel {
+  margin-top: 16px;
+  padding-bottom: 16px;
+}
+
+.empty-alerts,
+.action-error {
+  margin: 14px 16px 0;
+}
+
+.empty-alerts {
+  color: #657266;
+}
+
+.action-error {
+  color: #b42318;
+  font-weight: 800;
+}
+
+.alert-list {
+  display: grid;
+  gap: 10px;
+  padding: 16px 16px 0;
+}
+
+.alert-card {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  align-items: start;
+  border: 1px solid #d9e1d7;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.alert-card.warning {
+  border-color: #d8ad58;
+  background: #fff8e7;
+}
+
+.alert-card.danger {
+  border-color: #d99b96;
+  background: #fff1f0;
+}
+
+.alert-card p {
+  margin: 2px 0 0;
+  color: #576456;
+}
+
+.icon-button {
+  min-height: 34px;
+  width: 34px;
+  padding: 0;
+  font-size: 1.3rem;
+}
+
+@media (max-width: 860px) {
+  .top-bar,
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .top-bar {
+    display: grid;
+  }
+
+  .status-badge {
+    width: 100%;
+  }
+
+  .dashboard-grid {
+    display: grid;
+  }
+
+  .status-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .map-panel {
+    min-height: auto;
+  }
+}
+
+@media (max-width: 520px) {
+  .app-shell {
+    width: min(100vw - 20px, 1220px);
+    padding-top: 12px;
+  }
+
+  .status-strip,
+  .control-grid,
+  .coordinate-row {
+    grid-template-columns: 1fr;
+  }
+
+  .field-map {
+    aspect-ratio: 1 / 0.9;
+  }
+}
