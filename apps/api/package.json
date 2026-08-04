@@ -1,0 +1,25 @@
+{
+  "name": "@robot/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/main.ts",
+    "start": "node dist/main.js",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@fastify/cors": "^9.0.1",
+    "@robot/shared": "workspace:*",
+    "fastify": "^4.28.1",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@robot/simulator": "workspace:*"
+  }
+}
