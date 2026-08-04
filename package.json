@@ -1,0 +1,20 @@
+{
+  "name": "robot-operator-assessment",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.9.0",
+  "scripts": {
+    "build": "pnpm -r --if-present build",
+    "dev": "pnpm --filter @robot/shared build && pnpm --parallel --filter @robot/simulator --filter @robot/api --filter @robot/web dev",
+    "test": "pnpm --filter @robot/shared build && pnpm --filter @robot/simulator build && pnpm --filter @robot/simulator test && pnpm --filter @robot/api test",
+    "typecheck": "pnpm --filter @robot/shared typecheck && pnpm --filter @robot/shared build && pnpm --filter @robot/simulator typecheck && pnpm --filter @robot/api typecheck && pnpm --filter @robot/web typecheck"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/ws": "^8.5.13",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
