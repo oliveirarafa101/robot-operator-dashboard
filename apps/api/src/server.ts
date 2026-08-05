@@ -6,7 +6,7 @@ import {
   type BrowserSocketMessage,
   type GatewayStatus
 } from "@robot/shared";
-import { SimulatorClient } from "./simulatorClient.js";
+import { SimulatorLink } from "./simulatorLink.js";
 
 interface ApiServiceOptions {
   logger?: boolean;
@@ -22,21 +22,38 @@ interface DropConnectionBody {
 
 export interface ApiService {
   app: FastifyInstance;
-  simulator: SimulatorClient;
+  simulatorLink: SimulatorLink;
 }
 
 // This factory is the gateway composition root. It keeps the upstream adapter,
 // REST routes, and browser WebSocket fan-out in one testable service instance.
 export function createApiService(options: ApiServiceOptions): ApiService {
   const app = Fastify({ logger: options.logger ?? true });
-  const simulator = new SimulatorClient({
+  const browserTelemetryServer = new WebSocketServer({ noServer: true });
+  const browserSockets = new Set<WebSocket>();
+  let simulatorLink: SimulatorLink;
+
+  simulatorLink = new SimulatorLink({
     wsUrl: options.simulatorWsUrl,
     httpUrl: options.simulatorHttpUrl,
     reconnectMinMs: options.reconnectMinMs,
-    reconnectMaxMs: options.reconnectMaxMs
+    reconnectMaxMs: options.reconnectMaxMs,
+    // The link owns the simulator protocol; this server owns browser sockets.
+    // Direct callbacks keep that single hand-off explicit without an event bus.
+    onTelemetry: (telemetry) => {
+      broadcastToBrowsers({
+        type: "telemetry",
+        telemetry,
+        status: getGatewayStatus()
+      });
+    },
+    onConnectionChange: () => {
+      broadcastToBrowsers({
+        type: "simulator_connection",
+        status: getGatewayStatus()
+      });
+    }
   });
-  const browserServer = new WebSocketServer({ noServer: true });
-  const browsers = new Set<WebSocket>();
 
   // Broad CORS makes the local dashboard easy to run. Production should replace
   // `origin: true` with the known operator-dashboard origin(s).
@@ -55,59 +72,41 @@ export function createApiService(options: ApiServiceOptions): ApiService {
       return;
     }
 
-    browserServer.handleUpgrade(request, socket, head, (webSocket) => {
-      browserServer.emit("connection", webSocket, request);
+    browserTelemetryServer.handleUpgrade(request, socket, head, (webSocket) => {
+      registerBrowserSocket(webSocket);
     });
   });
 
-  browserServer.on("connection", (socket) => {
-    browsers.add(socket);
+  function registerBrowserSocket(browserSocket: WebSocket): void {
+    browserSockets.add(browserSocket);
 
     // A snapshot avoids a blank dashboard while waiting for the next 5 Hz tick.
-    send(socket, {
+    sendBrowserMessage(browserSocket, {
       type: "snapshot",
-      telemetry: simulator.latestTelemetry,
+      telemetry: simulatorLink.latestTelemetry,
       status: getGatewayStatus()
     });
 
-    socket.on("close", () => {
-      browsers.delete(socket);
+    browserSocket.on("close", () => {
+      browserSockets.delete(browserSocket);
     });
-  });
-
-  simulator.on("telemetry", (telemetry) => {
-    // One upstream feed is fanned out to any number of browser dashboards.
-    broadcast({
-      type: "telemetry",
-      telemetry,
-      status: getGatewayStatus()
-    });
-  });
-
-  simulator.on("connection", () => {
-    // This has no telemetry payload because it represents link health, not a
-    // claim that robot state changed. The browser keeps its last telemetry.
-    broadcast({
-      type: "simulator_connection",
-      status: getGatewayStatus()
-    });
-  });
+  }
 
   app.addHook("onReady", async () => {
-    simulator.start();
+    simulatorLink.start();
   });
 
   app.get("/health", async () => ({
     ok: true,
     service: "api",
-    simulatorConnected: simulator.isConnected,
-    browserClients: browsers.size
+    simulatorConnected: simulatorLink.isConnected,
+    browserClients: browserSockets.size
   }));
 
   app.get("/telemetry/latest", async () => ({
     // A diagnostic/bootstrap REST view. The live dashboard normally uses /ws
     // because polling would be wasteful for a 5 Hz server-driven stream.
-    telemetry: simulator.latestTelemetry,
+    telemetry: simulatorLink.latestTelemetry,
     status: getGatewayStatus()
   }));
 
@@ -118,7 +117,7 @@ export function createApiService(options: ApiServiceOptions): ApiService {
       return reply.status(404).send({ error: "Unknown command." });
     }
 
-    if (!simulator.isConnected) {
+    if (!simulatorLink.isConnected) {
       // Refuse commands when the gateway cannot prove it has a live robot link.
       return reply.status(503).send({
         error: "Simulator connection is not live; command not sent."
@@ -126,7 +125,7 @@ export function createApiService(options: ApiServiceOptions): ApiService {
     }
 
     try {
-      const result = await simulator.sendCommand(command);
+      const result = await simulatorLink.sendCommand(command);
       return reply.status(result.accepted ? 202 : 409).send(result);
     } catch (error) {
       return reply.status(502).send({
@@ -139,7 +138,7 @@ export function createApiService(options: ApiServiceOptions): ApiService {
     const seconds = request.body?.seconds ?? 5;
 
     try {
-      return await simulator.dropConnection(seconds);
+      return await simulatorLink.dropConnection(seconds);
     } catch (error) {
       return reply.status(502).send({
         error: error instanceof Error ? error.message : "Fault injection failed."
@@ -149,7 +148,7 @@ export function createApiService(options: ApiServiceOptions): ApiService {
 
   app.post("/faults/error", async (_request, reply) => {
     try {
-      return await simulator.triggerError();
+      return await simulatorLink.triggerError();
     } catch (error) {
       return reply.status(502).send({
         error: error instanceof Error ? error.message : "Fault injection failed."
@@ -158,40 +157,40 @@ export function createApiService(options: ApiServiceOptions): ApiService {
   });
 
   app.addHook("preClose", async () => {
-    simulator.stop();
+    simulatorLink.stop();
 
-    for (const browser of browsers) {
-      browser.terminate();
+    for (const browserSocket of browserSockets) {
+      browserSocket.terminate();
     }
   });
 
   app.addHook("onClose", async () => {
-    browserServer.close();
+    browserTelemetryServer.close();
   });
 
   function getGatewayStatus(): GatewayStatus {
-    const telemetry = simulator.latestTelemetry;
+    const telemetry = simulatorLink.latestTelemetry;
 
     // Keep robot time and gateway receive time separate. Clock domains differ,
     // and the UI needs the latter to estimate how old the stream really is.
     return {
-      simulatorConnected: simulator.isConnected,
+      simulatorConnected: simulatorLink.isConnected,
       lastTelemetryAt: telemetry?.timestamp ?? null,
-      lastTelemetryReceivedAt: simulator.lastTelemetryReceivedAt,
+      lastTelemetryReceivedAt: simulatorLink.lastTelemetryReceivedAt,
       serverTime: Date.now()
     };
   }
 
-  function broadcast(message: BrowserSocketMessage): void {
-    for (const browser of browsers) {
-      send(browser, message);
+  function broadcastToBrowsers(message: BrowserSocketMessage): void {
+    for (const browserSocket of browserSockets) {
+      sendBrowserMessage(browserSocket, message);
     }
   }
 
-  return { app, simulator };
+  return { app, simulatorLink };
 }
 
-function send(socket: WebSocket, message: BrowserSocketMessage): void {
+function sendBrowserMessage(socket: WebSocket, message: BrowserSocketMessage): void {
   // Browser tabs can close at any moment; never throw while broadcasting to a
   // stale entry that has not yet emitted its close event.
   if (socket.readyState === WebSocket.OPEN) {

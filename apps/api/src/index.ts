@@ -1,2 +1,2 @@
 export { createApiService } from "./server.js";
-export { SimulatorClient } from "./simulatorClient.js";
+export { SimulatorLink } from "./simulatorLink.js";

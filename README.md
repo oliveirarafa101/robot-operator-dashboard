@@ -79,7 +79,7 @@ The project is intentionally split into three apps and one shared protocol packa
 - `apps/web`: React operator dashboard with live/stale/disconnected states, telemetry map, controls, and dismissible alerts.
 - `packages/shared`: command names, telemetry shapes, gateway messages, and URL path mappings.
 
-This split keeps the simulator replaceable. For a real ROS2 robot, the API gateway is the adapter boundary: the simulator WebSocket client would be replaced by a `rosbridge_server` client while the browser contract stays stable.
+This split keeps the simulator replaceable. For a real ROS2 robot, the API gateway is the adapter boundary: the simulator telemetry link would be replaced by a `rosbridge_server` integration while the browser contract stays stable.
 
 ### Request and Telemetry Flows
 
@@ -104,7 +104,9 @@ REST is used for mission commands because each command has a finite outcome the 
 
 ## Connection Model
 
-Telemetry is emitted by the simulator at roughly 5 Hz. The API records the latest telemetry snapshot and sends a snapshot immediately when a browser connects. The dashboard derives:
+The gateway initiates one WebSocket handshake to the simulator's `/telemetry` endpoint. The simulator accepts that connection and pushes telemetry through the established link at roughly 5 Hz. It is full-duplex at the protocol level, but this application reserves it for simulator → gateway telemetry; mission commands use the simulator's HTTP endpoints instead.
+
+Each browser tab separately initiates a WebSocket connection to the gateway's `/ws` endpoint. The API records the latest telemetry snapshot and sends it to a browser immediately when that browser connects. The dashboard derives:
 
 - `LIVE`: browser socket is connected, API is connected to the simulator, and telemetry is fresh.
 - `STALE`: the API is reachable, but simulator telemetry stopped or the latest data is older than the freshness threshold.

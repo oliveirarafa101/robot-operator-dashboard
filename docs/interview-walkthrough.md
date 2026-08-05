@@ -74,27 +74,35 @@ not “the robot is a WebSocket server.”
 
 ## 4. Explain the Gateway in Two Directions
 
-Open `apps/api/src/simulatorClient.ts`, then `apps/api/src/server.ts`.
+Open `apps/api/src/simulatorLink.ts`, then `apps/api/src/server.ts`.
 
 ### Upstream: gateway to simulator
 
-`SimulatorClient` creates one outbound WebSocket to the configured
-`SIMULATOR_WS_URL`. Its `message` handler can receive only simulator frames because that
-specific socket was opened to the simulator endpoint. It saves the latest telemetry,
-records gateway receive time, emits an internal `telemetry` event, and reconnects with
-backoff after a close.
+`SimulatorLink` names the relationship rather than calling the simulator a generic
+“client.” The gateway initiates one WebSocket handshake to `SIMULATOR_WS_URL`; the
+simulator service accepts that upgrade. Once it is open, both sides own an endpoint of
+the same full-duplex connection, but this application's telemetry direction is
+simulator → gateway. Its `message` handler can therefore receive only simulator frames:
+browser sockets live in `server.ts`, not in this adapter. The link saves the latest
+telemetry, records gateway receive time, calls the API server's direct telemetry
+callback, and reconnects with backoff after a close. This is one in-process function
+call, not a WebSocket message and not an event bus.
+
+Mission commands deliberately do **not** use this telemetry socket. The gateway sends
+them as HTTP requests to the simulator, so the caller gets a clear accepted, rejected,
+or unavailable response.
 
 ### Downstream: gateway to browsers
 
 The API accepts inbound browser WebSocket upgrades only at `/ws`. Each browser socket is
-stored in `browsers`, receives an immediate snapshot, and receives the gateway's fan-out
+stored in `browserSockets`, receives an immediate snapshot, and receives the gateway's fan-out
 of future telemetry. The gateway never creates a browser connection; each tab creates
 one when the dashboard mounts.
 
 Useful line to explain:
 
 ```ts
-if (!simulator.isConnected) {
+if (!simulatorLink.isConnected) {
   return reply.status(503).send({
     error: "Simulator connection is not live; command not sent."
   });

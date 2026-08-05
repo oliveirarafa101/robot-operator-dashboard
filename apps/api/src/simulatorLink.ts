@@ -1,4 +1,3 @@
-import { EventEmitter } from "node:events";
 import { WebSocket } from "ws";
 import {
   COMMAND_PATHS,
@@ -8,17 +7,22 @@ import {
   type SimulatorTelemetryMessage
 } from "@robot/shared";
 
-interface SimulatorClientOptions {
+interface SimulatorLinkOptions {
   wsUrl: string;
   httpUrl: string;
   reconnectMinMs?: number;
   reconnectMaxMs?: number;
+  onTelemetry: (telemetry: RobotTelemetry) => void;
+  onConnectionChange: (connected: boolean) => void;
 }
 
-export class SimulatorClient extends EventEmitter {
-  // This is the gateway's single upstream session. Browser WebSockets are kept
-  // elsewhere: each has a different audience, lifecycle, and trust boundary.
-  private socket: WebSocket | null = null;
+// This is the gateway's long-lived integration with the simulator. The gateway
+// opens the WebSocket handshake to the simulator's telemetry endpoint; after
+// it opens, the simulator pushes telemetry frames through this full-duplex link.
+// It reports updates through direct callbacks supplied by server.ts; it never
+// owns or sends to browser sockets. Commands use HTTP below.
+export class SimulatorLink {
+  private upstreamSocket: WebSocket | null = null;
   private reconnectTimer: NodeJS.Timeout | null = null;
 
   // `stopped` distinguishes intentional shutdown from a network loss; shutdown
@@ -32,9 +36,7 @@ export class SimulatorClient extends EventEmitter {
   // actually last heard from the upstream link, which drives stale-data checks.
   private latestReceivedAt: number | null = null;
 
-  constructor(private readonly options: SimulatorClientOptions) {
-    super();
-  }
+  constructor(private readonly options: SimulatorLinkOptions) {}
 
   get isConnected(): boolean {
     return this.connected;
@@ -51,9 +53,9 @@ export class SimulatorClient extends EventEmitter {
   start(): void {
     this.stopped = false;
 
-    // `connect` is intentionally non-blocking. The API can start and report an
-    // unhealthy simulator link while reconnect attempts happen in the background.
-    this.connect();
+    // Connection setup is intentionally non-blocking. The API can start and
+    // report an unhealthy simulator link while reconnecting in the background.
+    this.connectTelemetrySocket();
   }
 
   stop(): void {
@@ -65,8 +67,8 @@ export class SimulatorClient extends EventEmitter {
 
     // Termination triggers the normal `close` handler, but `stopped` prevents it
     // from treating planned shutdown as an outage that needs recovery.
-    this.socket?.terminate();
-    this.socket = null;
+    this.upstreamSocket?.terminate();
+    this.upstreamSocket = null;
     this.connected = false;
   }
 
@@ -94,47 +96,50 @@ export class SimulatorClient extends EventEmitter {
     return this.postJson("/faults/error", {});
   }
 
-  private connect(): void {
-    if (this.stopped || this.socket) {
+  private connectTelemetrySocket(): void {
+    if (this.stopped || this.upstreamSocket) {
       return;
     }
 
-    // This adapter owns the upstream connection. Browsers should not each
-    // reconnect to, authenticate with, and parse the robot's native protocol.
-    const socket = new WebSocket(this.options.wsUrl);
-    this.socket = socket;
+    // The gateway initiates this handshake to the simulator's /telemetry
+    // endpoint. Once open, both services own one endpoint of the same link.
+    const upstreamSocket = new WebSocket(this.options.wsUrl);
+    this.upstreamSocket = upstreamSocket;
 
-    socket.on("open", () => {
+    upstreamSocket.on("open", () => {
       this.reconnectAttempt = 0;
       this.setConnected(true);
     });
 
-    socket.on("message", (data) => {
-      // The configured upstream is trusted for this assessment. A real robot
-      // integration should schema-validate this parsed JSON before using it.
+    upstreamSocket.on("message", (data) => {
+      // These frames come from the simulator because this is the gateway's
+      // endpoint of the simulator link. Browser frames never enter this class.
+      // A real robot integration should schema-validate parsed JSON here.
       const message = JSON.parse(data.toString()) as SimulatorTelemetryMessage;
 
       if (message.type === "telemetry") {
         this.latest = message.telemetry;
         this.latestReceivedAt = Date.now();
-        this.emit("telemetry", message.telemetry);
+        // This is a direct in-process call to the API server's one telemetry
+        // consumer. It is not a socket message or a general event bus.
+        this.options.onTelemetry(message.telemetry);
       }
     });
 
-    socket.on("error", () => {
-      socket.terminate();
+    upstreamSocket.on("error", () => {
+      upstreamSocket.terminate();
     });
 
-    socket.on("unexpected-response", (_request, response) => {
+    upstreamSocket.on("unexpected-response", (_request, response) => {
       // The simulator returns HTTP 503 during a simulated radio drop. Consume
       // that response before terminating so ws does not leave a socket hanging.
       response.resume();
-      socket.terminate();
+      upstreamSocket.terminate();
     });
 
-    socket.on("close", () => {
-      if (this.socket === socket) {
-        this.socket = null;
+    upstreamSocket.on("close", () => {
+      if (this.upstreamSocket === upstreamSocket) {
+        this.upstreamSocket = null;
       }
 
       this.setConnected(false);
@@ -147,10 +152,10 @@ export class SimulatorClient extends EventEmitter {
       return;
     }
 
-    // Emit only a transition, not every low-level socket event. Downstream
-    // dashboards need one clear “simulator link changed” notification.
+    // Notify the API server only when link health changes, not for every
+    // low-level socket event.
     this.connected = nextConnected;
-    this.emit("connection", nextConnected);
+    this.options.onConnectionChange(nextConnected);
   }
 
   private scheduleReconnect(): void {
@@ -166,7 +171,7 @@ export class SimulatorClient extends EventEmitter {
 
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
-      this.connect();
+      this.connectTelemetrySocket();
     }, delayMs);
 
     this.reconnectTimer.unref();
