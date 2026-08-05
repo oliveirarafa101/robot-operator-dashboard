@@ -81,18 +81,6 @@ The project is intentionally split into three apps and one shared protocol packa
 
 This split keeps the simulator replaceable. For a real ROS2 robot, the API gateway is the adapter boundary: the simulator WebSocket client would be replaced by a `rosbridge_server` client while the browser contract stays stable.
 
-### Why the Gateway Exists
-
-The browser could technically open a WebSocket straight to this simulator, but that shortcut makes the browser responsible for a robot-facing integration that should be owned by the backend. The gateway is deliberately the only service that knows how to talk to the robot.
-
-- It keeps robot credentials, network routing, protocol details, and future ROS2/`rosbridge_server` integration out of the browser bundle.
-- It maintains one upstream connection, retries it with backoff, records the latest known telemetry, and fans that stream out to many dashboards. Ten browser tabs do not become ten robot connections.
-- It gives every browser a stable, deliberately small contract even if the underlying robot protocol changes.
-- It is the enforcement point for authentication, roles, command validation, rate limits, audit logs, and a future operator-control lease. Those controls cannot be trusted when implemented only in the browser.
-- It can distinguish “the dashboard can reach the API” from “the API can still reach the robot,” which is the reason the UI can show `STALE` and lock controls safely.
-
-The simulator remains the source of truth for robot state. The gateway does not invent telemetry or apply mission transitions; it validates the public command path, forwards the command, and distributes the simulator's answer.
-
 ### Request and Telemetry Flows
 
 ```mermaid
@@ -147,7 +135,4 @@ Backend tests cover:
 - Emergency stop behavior.
 - API disconnect/reconnect flow, including stale connection notification and resumed telemetry.
 
-## Interview Walkthrough
 
-`docs/interview-walkthrough.md` provides a code-first presentation order, short talking
-points, a live demo script, and honest production follow-ups for the assessment discussion.
