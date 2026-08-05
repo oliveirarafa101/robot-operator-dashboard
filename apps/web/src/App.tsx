@@ -16,6 +16,8 @@ import {
 import { COMMAND_PATHS, type RobotCommand, type RobotTelemetry } from "@robot/shared";
 import { useTelemetrySocket, type LinkStatus } from "./useTelemetrySocket";
 
+// These URLs are evaluated in the browser. `localhost` is correct for the
+// Docker demo because Compose publishes the API port to the operator's machine.
 const API_HTTP_URL = import.meta.env.VITE_API_HTTP_URL ?? "http://localhost:4020";
 const API_WS_URL =
   import.meta.env.VITE_API_WS_URL ?? API_HTTP_URL.replace(/^http/, "ws").concat("/ws");
@@ -38,12 +40,17 @@ export function App() {
   } = useTelemetrySocket(API_WS_URL);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  // Dismissal is local presentation state. It never hides the actual robot
+  // error from telemetry or changes backend safety behaviour.
   const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(() => new Set());
 
   const alerts = useMemo(() => buildAlerts(telemetry), [telemetry]);
   const activeAlertKeys = useMemo(() => new Set(alerts.map((alert) => alert.key)), [alerts]);
 
   useEffect(() => {
+    // When a condition clears, forget its dismissal. If it occurs again later,
+    // the operator should see it as a new active alert.
     setDismissedAlerts((current) => {
       const next = new Set<string>();
 
@@ -58,6 +65,9 @@ export function App() {
   }, [activeAlertKeys]);
 
   const visibleAlerts = alerts.filter((alert) => !dismissedAlerts.has(alert.key));
+
+  // Do not leave two controls active while a command is in flight, and never
+  // offer mission actions based on telemetry that may already be stale.
   const controlsLocked = !isSafeForCommands || pendingAction !== null;
 
   async function sendCommand(command: RobotCommand) {
@@ -65,6 +75,8 @@ export function App() {
     setActionError(null);
 
     try {
+      // Deliberately no optimistic telemetry update here. The next WebSocket
+      // message from the simulator is the only authoritative state change.
       const response = await fetch(`${API_HTTP_URL}/commands/${COMMAND_PATHS[command]}`, {
         method: "POST"
       });
@@ -214,6 +226,8 @@ function RobotMap({
   const x = telemetry?.position.x ?? 50;
   const y = telemetry?.position.y ?? 50;
 
+  // The simulator and SVG share a 0–100 coordinate system, so position can be
+  // rendered directly without a hidden map-projection conversion.
   return (
     <section className="map-panel">
       <div className="panel-heading">
@@ -312,6 +326,8 @@ function MissionControls({
 }) {
   const state = telemetry?.state ?? "idle";
 
+  // This mirrors the server's state-machine rules for a clearer UI. It is not
+  // the authority: the simulator validates every command again on the backend.
   return (
     <section className="controls-panel">
       <div className="panel-heading">
@@ -397,6 +413,8 @@ function FaultPanel({
   pendingAction: string | null;
   onInject: (fault: "drop-connection" | "error") => void;
 }) {
+  // These buttons exist to demonstrate recovery during the assessment. A real
+  // operator dashboard would remove them or protect them behind admin access.
   return (
     <section className="fault-panel">
       <div className="panel-heading">
@@ -437,6 +455,8 @@ function buildAlerts(telemetry: RobotTelemetry | null): AlertItem[] {
 
   const alerts: AlertItem[] = [];
 
+  // Alerts are derived from current telemetry instead of stored separately, so
+  // they naturally resync after reconnecting and cannot become stale on their own.
   if (telemetry.batteryPercent <= 20) {
     alerts.push({
       key: "battery-low",

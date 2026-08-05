@@ -25,6 +25,8 @@ export interface ApiService {
   simulator: SimulatorClient;
 }
 
+// This factory is the gateway composition root. It keeps the upstream adapter,
+// REST routes, and browser WebSocket fan-out in one testable service instance.
 export function createApiService(options: ApiServiceOptions): ApiService {
   const app = Fastify({ logger: options.logger ?? true });
   const simulator = new SimulatorClient({
@@ -36,12 +38,16 @@ export function createApiService(options: ApiServiceOptions): ApiService {
   const browserServer = new WebSocketServer({ noServer: true });
   const browsers = new Set<WebSocket>();
 
+  // Broad CORS makes the local dashboard easy to run. Production should replace
+  // `origin: true` with the known operator-dashboard origin(s).
   void app.register(cors, {
     origin: true,
     methods: ["GET", "POST", "OPTIONS"]
   });
 
   app.server.on("upgrade", (request, socket, head) => {
+    // Fastify owns the HTTP listener; ws only takes over connections intended
+    // for the browser telemetry endpoint.
     const url = new URL(request.url ?? "/", "http://localhost");
 
     if (url.pathname !== "/ws") {
@@ -56,6 +62,8 @@ export function createApiService(options: ApiServiceOptions): ApiService {
 
   browserServer.on("connection", (socket) => {
     browsers.add(socket);
+
+    // A snapshot avoids a blank dashboard while waiting for the next 5 Hz tick.
     send(socket, {
       type: "snapshot",
       telemetry: simulator.latestTelemetry,
@@ -68,6 +76,7 @@ export function createApiService(options: ApiServiceOptions): ApiService {
   });
 
   simulator.on("telemetry", (telemetry) => {
+    // One upstream feed is fanned out to any number of browser dashboards.
     broadcast({
       type: "telemetry",
       telemetry,
@@ -76,6 +85,8 @@ export function createApiService(options: ApiServiceOptions): ApiService {
   });
 
   simulator.on("connection", () => {
+    // This has no telemetry payload because it represents link health, not a
+    // claim that robot state changed. The browser keeps its last telemetry.
     broadcast({
       type: "simulator_connection",
       status: getGatewayStatus()
@@ -94,6 +105,8 @@ export function createApiService(options: ApiServiceOptions): ApiService {
   }));
 
   app.get("/telemetry/latest", async () => ({
+    // A diagnostic/bootstrap REST view. The live dashboard normally uses /ws
+    // because polling would be wasteful for a 5 Hz server-driven stream.
     telemetry: simulator.latestTelemetry,
     status: getGatewayStatus()
   }));
@@ -106,6 +119,7 @@ export function createApiService(options: ApiServiceOptions): ApiService {
     }
 
     if (!simulator.isConnected) {
+      // Refuse commands when the gateway cannot prove it has a live robot link.
       return reply.status(503).send({
         error: "Simulator connection is not live; command not sent."
       });
@@ -158,6 +172,8 @@ export function createApiService(options: ApiServiceOptions): ApiService {
   function getGatewayStatus(): GatewayStatus {
     const telemetry = simulator.latestTelemetry;
 
+    // Keep robot time and gateway receive time separate. Clock domains differ,
+    // and the UI needs the latter to estimate how old the stream really is.
     return {
       simulatorConnected: simulator.isConnected,
       lastTelemetryAt: telemetry?.timestamp ?? null,
@@ -176,6 +192,8 @@ export function createApiService(options: ApiServiceOptions): ApiService {
 }
 
 function send(socket: WebSocket, message: BrowserSocketMessage): void {
+  // Browser tabs can close at any moment; never throw while broadcasting to a
+  // stale entry that has not yet emitted its close event.
   if (socket.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify(message));
   }
