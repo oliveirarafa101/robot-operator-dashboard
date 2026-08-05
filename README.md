@@ -24,15 +24,15 @@ with an actionable alert.
 
 <p align="center">
   <img src="docs/images/dashboard-live-ready.png" alt="Live dashboard with an idle robot ready to start a mission" width="49%" />
-  <img src="docs/images/dashboard-running.jpg" alt="Live dashboard while a robot mission is running" width="49%" />
+  <img src="docs/images/dashboard-running.png" alt="Live dashboard while a robot mission is running" width="49%" />
 </p>
 <p align="center">
   <em>LIVE and ready</em> &nbsp;&nbsp;&nbsp;&nbsp; <em>LIVE with an active mission</em>
 </p>
 
 <p align="center">
-  <img src="docs/images/dashboard-stale.jpg" alt="Stale dashboard showing simulator reconnection and locked mission controls" width="49%" />
-  <img src="docs/images/dashboard-error.jpg" alt="Dashboard showing a robot error state and visible error alert" width="49%" />
+  <img src="docs/images/dashboard-stale.png" alt="Stale dashboard showing simulator reconnection and locked mission controls" width="49%" />
+  <img src="docs/images/dashboard-error.png" alt="Dashboard showing a robot error state and visible error alert" width="49%" />
 </p>
 <p align="center">
   <em>STALE: last known data remains visible while controls lock</em> &nbsp;&nbsp;&nbsp;&nbsp; <em>Robot error with an actionable alert</em>
