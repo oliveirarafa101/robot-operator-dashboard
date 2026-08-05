@@ -16,6 +16,28 @@ Services:
 - API gateway: `http://localhost:4020`
 - Dashboard: `http://localhost:4030`
 
+## Dashboard States
+
+The dashboard makes the operator-visible safety states explicit: a healthy ready state,
+an active mission, an upstream telemetry outage that locks controls, and a robot fault
+with an actionable alert.
+
+<p align="center">
+  <img src="docs/images/dashboard-live-ready.png" alt="Live dashboard with an idle robot ready to start a mission" width="49%" />
+  <img src="docs/images/dashboard-running.jpg" alt="Live dashboard while a robot mission is running" width="49%" />
+</p>
+<p align="center">
+  <em>LIVE and ready</em> &nbsp;&nbsp;&nbsp;&nbsp; <em>LIVE with an active mission</em>
+</p>
+
+<p align="center">
+  <img src="docs/images/dashboard-stale.jpg" alt="Stale dashboard showing simulator reconnection and locked mission controls" width="49%" />
+  <img src="docs/images/dashboard-error.jpg" alt="Dashboard showing a robot error state and visible error alert" width="49%" />
+</p>
+<p align="center">
+  <em>STALE: last known data remains visible while controls lock</em> &nbsp;&nbsp;&nbsp;&nbsp; <em>Robot error with an actionable alert</em>
+</p>
+
 ## Local Development
 
 ```bash
@@ -59,6 +81,39 @@ The project is intentionally split into three apps and one shared protocol packa
 
 This split keeps the simulator replaceable. For a real ROS2 robot, the API gateway is the adapter boundary: the simulator WebSocket client would be replaced by a `rosbridge_server` client while the browser contract stays stable.
 
+### Why the Gateway Exists
+
+The browser could technically open a WebSocket straight to this simulator, but that shortcut makes the browser responsible for a robot-facing integration that should be owned by the backend. The gateway is deliberately the only service that knows how to talk to the robot.
+
+- It keeps robot credentials, network routing, protocol details, and future ROS2/`rosbridge_server` integration out of the browser bundle.
+- It maintains one upstream connection, retries it with backoff, records the latest known telemetry, and fans that stream out to many dashboards. Ten browser tabs do not become ten robot connections.
+- It gives every browser a stable, deliberately small contract even if the underlying robot protocol changes.
+- It is the enforcement point for authentication, roles, command validation, rate limits, audit logs, and a future operator-control lease. Those controls cannot be trusted when implemented only in the browser.
+- It can distinguish “the dashboard can reach the API” from “the API can still reach the robot,” which is the reason the UI can show `STALE` and lock controls safely.
+
+The simulator remains the source of truth for robot state. The gateway does not invent telemetry or apply mission transitions; it validates the public command path, forwards the command, and distributes the simulator's answer.
+
+### Request and Telemetry Flows
+
+```mermaid
+sequenceDiagram
+  participant R as Robot simulator
+  participant G as API gateway
+  participant B as Browser dashboard
+
+  R->>G: WebSocket telemetry (5 Hz)
+  G->>G: Store latest snapshot and receive time
+  G->>B: WebSocket snapshot / telemetry + gateway status
+  B->>G: REST POST /commands/pause
+  G->>R: REST POST /commands/pause
+  R-->>G: 202 accepted or 409 rejected
+  G-->>B: REST result
+  R->>G: Next WebSocket telemetry (authoritative state)
+  G->>B: WebSocket telemetry
+```
+
+REST is used for mission commands because each command has a finite outcome the caller needs to handle: accepted, rejected due to an invalid state, or unavailable. WebSockets are used for telemetry because it is a server-driven stream where many small updates should reach every dashboard without polling. The dashboard never treats a successful REST response as proof of the new state; it waits for the follow-up telemetry event.
+
 ## Connection Model
 
 Telemetry is emitted by the simulator at roughly 5 Hz. The API records the latest telemetry snapshot and sends a snapshot immediately when a browser connects. The dashboard derives:
@@ -68,6 +123,8 @@ Telemetry is emitted by the simulator at roughly 5 Hz. The API records the lates
 - `DISCONNECTED`: the browser cannot reach the API WebSocket.
 
 Mission controls are disabled outside `LIVE`. This is the most important product behavior in the assessment because silent stale data would be unsafe for an operator.
+
+`Last data` is the age of the most recent telemetry received by the browser, adjusted using the gateway's reported receive time. It should stay close to zero while the stream is healthy. `Sequence` is a monotonically increasing heartbeat counter: it advances even while the robot is idle or paused, so a changing sequence proves the stream is alive; it is not a mission progress counter.
 
 ## Mission Commands
 
@@ -89,3 +146,8 @@ Backend tests cover:
 - Unsafe command rejection.
 - Emergency stop behavior.
 - API disconnect/reconnect flow, including stale connection notification and resumed telemetry.
+
+## Interview Walkthrough
+
+`docs/interview-walkthrough.md` provides a code-first presentation order, short talking
+points, a live demo script, and honest production follow-ups for the assessment discussion.
